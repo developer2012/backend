@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MatchTalk — Voice + Text</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="min-h-screen bg-slate-950 text-white">
+  <div class="max-w-5xl mx-auto px-4 py-6 sm:py-8">
+
+    <!-- TOP BAR -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5 sm:mb-6">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">🎧</div>
+        <div>
+          <div class="font-bold text-xl">MatchTalk</div>
+          <div class="text-white/60 text-sm">Level + Gender match • Text + Voice (WebRTC)</div>
+        </div>
+      </div>
+      <div class="text-sm text-white/70">
+        Online: <span id="onlineCount" class="font-semibold text-white">0</span>
+      </div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="grid lg:grid-cols-2 gap-5 sm:gap-6">
+      <!-- LEFT: SETUP -->
+      <div class="rounded-3xl bg-white/5 border border-white/10 p-5 sm:p-6 shadow-xl">
+        <div class="text-lg font-semibold mb-1">Boshlash</div>
+        <div class="text-white/60 text-sm mb-4">Ism, gender, level tanla. Start bos.</div>
+
+        <label class="text-sm text-white/70">Ism</label>
+        <input id="name" class="mt-1 w-full rounded-xl bg-slate-900 border border-white/10 px-3 py-2 outline-none"
+               placeholder="Masalan: Sharof" />
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+          <div>
+            <label class="text-sm text-white/70">Gender</label>
+            <select id="gender" class="mt-1 w-full rounded-xl bg-slate-900 border border-white/10 px-3 py-2 outline-none">
+              <option value="any">Farqi yo‘q</option>
+              <option value="male">Erkak</option>
+              <option value="female">Ayol</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-sm text-white/70">Level</label>
+            <select id="level" class="mt-1 w-full rounded-xl bg-slate-900 border border-white/10 px-3 py-2 outline-none">
+              <option>A1</option><option>A2</option><option>B1</option>
+              <option>B2</option><option>C1</option><option>C2</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 mt-5">
+          <button id="btnStart"
+                  class="w-full sm:flex-1 rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2 font-semibold">
+            Start / Search
+          </button>
+
+          <button id="btnNext"
+                  class="w-full sm:w-auto rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2 font-semibold hidden">
+            Next
+          </button>
+
+          <button id="btnLeave"
+                  class="w-full sm:w-auto rounded-xl bg-red-500/20 hover:bg-red-500/30 px-4 py-2 font-semibold hidden">
+            Leave
+          </button>
+        </div>
+
+        <div class="mt-4 text-sm text-white/70">Status: <span id="statusText" class="text-white">Tayyor</span></div>
+        <div id="pairInfo" class="mt-2 text-sm text-white/70"></div>
+
+        <!-- VOICE CONTROLS -->
+        <div class="mt-5 rounded-2xl border border-white/10 bg-slate-900/40 p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="font-semibold">🎤 Voice</div>
+              <div class="text-xs text-white/60">Match bo‘lgach ulanish boshlanadi</div>
+            </div>
+            <div class="text-xs text-white/60" id="voiceState">Voice: off</div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+            <button id="btnVoiceOn"
+              class="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled>
+              Enable Mic
+            </button>
+            <button id="btnMute"
+              class="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled>
+              Mute
+            </button>
+          </div>
+
+          <!-- Partner audio output -->
+          <audio id="remoteAudio" autoplay playsinline></audio>
+
+          <div class="mt-2 text-xs text-white/50 leading-relaxed">
+            Eslatma: Voice ishlashi uchun brauzer mic permission so‘raydi. Testda echo bo‘lishi mumkin — quloqchin taq.
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT: CHAT -->
+      <div class="rounded-3xl bg-white/5 border border-white/10 p-5 sm:p-6 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-lg font-semibold">Chat</div>
+          <div class="text-xs text-white/50">Enter = yuborish</div>
+        </div>
+
+        <div id="messages" class="h-[52vh] lg:h-[420px] overflow-y-auto rounded-2xl bg-slate-900/60 border border-white/10 p-4 space-y-2">
+          <div class="text-white/50 text-sm">Hali chat yo‘q. Match bo‘lganda shu yerda chiqadi.</div>
+        </div>
+
+        <div class="mt-3 flex flex-col sm:flex-row gap-2">
+          <input id="msg" disabled
+                 class="flex-1 rounded-xl bg-slate-900 border border-white/10 px-3 py-2 outline-none"
+                 placeholder="Xabar yozing..." />
+          <button id="btnSend" disabled
+                  class="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 font-semibold">
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+  const socket = io(); // http://localhost:3000
+
+  const el = (id) => document.getElementById(id);
+
+  const nameEl = el("name");
+  const genderEl = el("gender");
+  const levelEl = el("level");
+
+  const btnStart = el("btnStart");
+  const btnNext  = el("btnNext");
+  const btnLeave = el("btnLeave");
+  const btnSend  = el("btnSend");
+
+  const statusText = el("statusText");
+  const pairInfo = el("pairInfo");
+  const onlineCount = el("onlineCount");
+
+  const messages = el("messages");
+  const msg = el("msg");
+
+  // voice UI
+  const btnVoiceOn = el("btnVoiceOn");
+  const btnMute = el("btnMute");
+  const voiceState = el("voiceState");
+  const remoteAudio = el("remoteAudio");
+
+  // app state
+  let me = null;
+  let roomId = null;
+  let otherUser = null;
+
+  // WebRTC state
+  let pc = null;
+  let localStream = null;
+  let micEnabled = false;
+  let muted = false;
+  let isInitiator = false;
+
+  const RTC_CONFIG = {
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+  };
+
+  function setStatus(s) { statusText.textContent = s; }
+
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  function addMsg(who, text, mine=false) {
+    const wrap = document.createElement("div");
+    wrap.className = "flex " + (mine ? "justify-end" : "justify-start");
+
+    const bubble = document.createElement("div");
+    bubble.className =
+      "max-w-[88%] sm:max-w-[80%] rounded-2xl px-3 py-2 text-sm border " +
+      (mine ? "bg-blue-600/20 border-blue-500/30" : "bg-white/5 border-white/10");
+
+    bubble.innerHTML = `<div class="text-xs text-white/60 mb-1">${escapeHtml(who)}</div><div>${escapeHtml(text)}</div>`;
+    wrap.appendChild(bubble);
+    messages.appendChild(wrap);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function clearMessages() { messages.innerHTML = ""; }
+
+  function enableChat(on) {
+    msg.disabled = !on;
+    btnSend.disabled = !on;
+    btnLeave.classList.toggle("hidden", !on);
+    btnNext.classList.toggle("hidden", !on);
+
+    // voice buttons available when matched
+    btnVoiceOn.disabled = !on;
+    btnMute.disabled = !on || !micEnabled;
+
+    if (!on) {
+      btnMute.textContent = "Mute";
+      muted = false;
+      setVoiceUI();
+    }
+  }
+
+  function setVoiceUI() {
+    if (!roomId) {
+      voiceState.textContent = "Voice: off";
+      return;
+    }
+    if (!micEnabled) {
+      voiceState.textContent = "Voice: ready (mic off)";
+      return;
+    }
+    voiceState.textContent = muted ? "Voice: muted" : "Voice: live";
+  }
+
+  async function ensurePeerConnection() {
+    if (pc) return;
+
+    pc = new RTCPeerConnection(RTC_CONFIG);
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit("signal", { type: "ice", candidate: event.candidate });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      // remote audio
+      remoteAudio.srcObject = event.streams[0];
+    };
+
+    pc.onconnectionstatechange = () => {
+      // optional: show in status
+      // console.log("pc state:", pc.connectionState);
+    };
+  }
+
+  async function enableMic() {
+    if (!roomId) {
+      setStatus("Avval match bo‘lsin.");
+      return;
+    }
+    try {
+      if (!localStream) {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      }
+      micEnabled = true;
+      muted = false;
+
+      await ensurePeerConnection();
+
+      // add tracks if not added
+      const senders = pc.getSenders().map(s => s.track).filter(Boolean);
+      for (const track of localStream.getAudioTracks()) {
+        if (!senders.includes(track)) pc.addTrack(track, localStream);
+        track.enabled = true; // not muted
+      }
+
+      btnMute.disabled = false;
+      setVoiceUI();
+      socket.emit("voiceState", { state: "mic_on" });
+
+      // If initiator, create offer
+      if (isInitiator) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit("signal", { type: "offer", sdp: offer.sdp });
+      } else {
+        // Not initiator: wait offer, then answer automatically
+        // (no action here)
+      }
+
+    } catch (err) {
+      setStatus("Mic ruxsat berilmadi yoki xato: " + (err?.message || err));
+      micEnabled = false;
+      setVoiceUI();
+    }
+  }
+
+  function toggleMute() {
+    if (!localStream) return;
+    muted = !muted;
+    for (const track of localStream.getAudioTracks()) track.enabled = !muted;
+    btnMute.textContent = muted ? "Unmute" : "Mute";
+    setVoiceUI();
+    socket.emit("voiceState", { state: muted ? "muted" : "unmuted" });
+  }
+
+  async function destroyVoice() {
+    try {
+      if (pc) {
+        pc.onicecandidate = null;
+        pc.ontrack = null;
+        pc.close();
+      }
+    } catch {}
+    pc = null;
+
+    if (localStream) {
+      localStream.getTracks().forEach(t => t.stop());
+    }
+    localStream = null;
+
+    micEnabled = false;
+    muted = false;
+
+    remoteAudio.srcObject = null;
+    btnMute.disabled = true;
+    btnMute.textContent = "Mute";
+    setVoiceUI();
+  }
+
+  // Signaling handler
+  socket.on("signal", async (data) => {
+    if (!roomId) return;
+
+    await ensurePeerConnection();
+
+    if (data.type === "offer") {
+      // If we haven't enabled mic, still can receive audio; but most browsers need interaction for autoplay.
+      await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
+
+      // If user enabled mic, tracks are already added. If not, we can still answer without local tracks.
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit("signal", { type: "answer", sdp: answer.sdp });
+
+    } else if (data.type === "answer") {
+      await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
+
+    } else if (data.type === "ice" && data.candidate) {
+      try { await pc.addIceCandidate(data.candidate); } catch {}
+    }
+  });
+
+  // ====== UI actions ======
+  btnStart.addEventListener("click", () => {
+    if (!me) {
+      socket.emit("hello", {
+        name: nameEl.value.trim() || "Guest",
+        gender: genderEl.value,
+        level: levelEl.value
+      });
+      return;
+    }
+    socket.emit("joinQueue");
+  });
+
+  btnNext.addEventListener("click", () => socket.emit("next"));
+  btnLeave.addEventListener("click", () => socket.emit("leaveRoom"));
+
+  function sendText() {
+    const text = msg.value.trim();
+    if (!text || !roomId) return;
+    socket.emit("chat", { text });
+    msg.value = "";
+  }
+
+  btnSend.addEventListener("click", sendText);
+  msg.addEventListener("keydown", (e) => { if (e.key === "Enter") sendText(); });
+
+  btnVoiceOn.addEventListener("click", enableMic);
+  btnMute.addEventListener("click", toggleMute);
+
+  // ====== socket events ======
+  socket.on("helloOk", (data) => {
+    me = data;
+    setStatus("Profil tasdiqlandi. Qidirish boshlandi...");
+    socket.emit("joinQueue");
+  });
+
+  socket.on("onlineCount", ({ count }) => { onlineCount.textContent = count; });
+
+  socket.on("waiting", async (d) => {
+    roomId = null;
+    otherUser = null;
+    pairInfo.textContent = "";
+    enableChat(false);
+    await destroyVoice();
+    setStatus(d?.msg || "Kutilyapti...");
+  });
+
+  socket.on("matched", async (d) => {
+    roomId = d.roomId;
+    clearMessages();
+    enableChat(true);
+
+    otherUser = (d.a.id === me.id) ? d.b : d.a;
+    pairInfo.innerHTML = `Ulandi: <span class="text-white font-semibold">${escapeHtml(otherUser.name)}</span> (${escapeHtml(otherUser.level)}/${escapeHtml(otherUser.gender)})`;
+    setStatus("Match topildi ✅ Text + Voice tayyor.");
+
+    // Decide initiator deterministically
+    isInitiator = String(me.id) < String(otherUser.id);
+
+    // Reset voice session per match
+    await destroyVoice();
+    setVoiceUI();
+    addMsg("System", "Chat boshlandi ✅", false);
+  });
+
+  socket.on("chat", (d) => {
+    if (!me) return;
+    const mine = d.from === me.id;
+    addMsg(mine ? "Men" : d.name, d.text, mine);
+  });
+
+  socket.on("voiceState", (d) => {
+    // optional: show partner status in chat
+    if (!otherUser) return;
+    const who = "Partner";
+    if (d.state === "mic_on") addMsg("System", `${who} mikrofonni yoqdi 🎤`, false);
+    if (d.state === "muted") addMsg("System", `${who} mute qildi 🔇`, false);
+    if (d.state === "unmuted") addMsg("System", `${who} unmute qildi 🔊`, false);
+  });
+
+  socket.on("roomEnded", async (d) => {
+    enableChat(false);
+    pairInfo.textContent = "";
+    await destroyVoice();
+    setStatus("Chat tugadi: " + (d?.reason || "ended") + ". Qayta qidirish uchun Start/Next bosing.");
+  });
+
+  socket.on("infoMsg", (d) => setStatus(d?.msg || "Info"));
+  socket.on("errorMsg", (d) => setStatus("Xato: " + (d?.msg || "unknown")));
+  socket.on("autoJoinQueue", () => socket.emit("joinQueue"));
+
+  // initial UI
+  setStatus("Tayyor. Ism/gender/level tanlab Start bosing. Match bo‘lgach Enable Mic.");
+  setVoiceUI();
+</script>
+</body>
+</html>
