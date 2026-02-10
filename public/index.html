@@ -3,618 +3,83 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>MatchTalk — Voice + Text</title>
-
+  <title>Sayra — 1v1 Match (Text + Voice)</title>
+  <link rel="stylesheet" href="/styles.css">
   <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <style>
-    /* ==========================================================
-       MatchTalk Premium UI (custom CSS over Tailwind)
-       ========================================================== */
-    :root{
-      --bg0:#050816;
-      --bg1:#071026;
-      --card: rgba(255,255,255,.06);
-      --stroke: rgba(255,255,255,.10);
-      --glow: rgba(99,102,241,.22);
-      --txt: rgba(255,255,255,.92);
-      --muted: rgba(255,255,255,.62);
-      --good: rgba(16,185,129,.28);
-      --bad: rgba(239,68,68,.25);
-    }
-    body{
-      background:
-        radial-gradient(900px 500px at 10% 10%, rgba(99,102,241,.18), transparent 55%),
-        radial-gradient(700px 400px at 90% 20%, rgba(34,211,238,.12), transparent 60%),
-        radial-gradient(600px 600px at 50% 100%, rgba(16,185,129,.10), transparent 55%),
-        linear-gradient(180deg, var(--bg0), var(--bg1));
-    }
-    .glass{
-      background: var(--card);
-      border: 1px solid var(--stroke);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      box-shadow: 0 20px 80px rgba(0,0,0,.45);
-    }
-    .chip{
-      border:1px solid var(--stroke);
-      background: rgba(255,255,255,.05);
-    }
-    .soft{
-      box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 18px 80px rgba(0,0,0,.35);
-    }
-    .scroll{
-      scrollbar-width: thin;
-      scrollbar-color: rgba(255,255,255,.18) transparent;
-    }
-    .scroll::-webkit-scrollbar{ width: 10px; }
-    .scroll::-webkit-scrollbar-thumb{
-      background: rgba(255,255,255,.14);
-      border-radius: 999px;
-      border: 2px solid transparent;
-      background-clip: padding-box;
-    }
-    .pulseDot{
-      width:10px;height:10px;border-radius:999px;
-      background: rgba(16,185,129,.95);
-      box-shadow: 0 0 0 0 rgba(16,185,129,.55);
-      animation: pulse 1.6s infinite;
-    }
-    @keyframes pulse{
-      0%{ box-shadow: 0 0 0 0 rgba(16,185,129,.55); }
-      70%{ box-shadow: 0 0 0 10px rgba(16,185,129,0); }
-      100%{ box-shadow: 0 0 0 0 rgba(16,185,129,0); }
-    }
-    .btn{
-      border:1px solid rgba(255,255,255,.12);
-      transition: transform .12s ease, background .12s ease, border-color .12s ease;
-    }
-    .btn:active{ transform: scale(.98); }
-    .btnPrimary{
-      background: linear-gradient(135deg, rgba(99,102,241,.92), rgba(34,211,238,.85));
-      box-shadow: 0 18px 50px rgba(99,102,241,.25);
-    }
-    .btnPrimary:hover{ filter: brightness(1.05); }
-    .btnGhost{ background: rgba(255,255,255,.06); }
-    .btnGhost:hover{ background: rgba(255,255,255,.10); }
-    .btnDanger{ background: rgba(239,68,68,.16); }
-    .btnDanger:hover{ background: rgba(239,68,68,.22); }
-    .input{
-      background: rgba(2,6,23,.55);
-      border: 1px solid rgba(255,255,255,.12);
-      color: var(--txt);
-      outline: none;
-    }
-    .input:focus{
-      border-color: rgba(99,102,241,.55);
-      box-shadow: 0 0 0 4px rgba(99,102,241,.18);
-    }
-    .bubbleMe{
-      background: rgba(99,102,241,.18);
-      border: 1px solid rgba(99,102,241,.22);
-    }
-    .bubbleOther{
-      background: rgba(255,255,255,.05);
-      border: 1px solid rgba(255,255,255,.10);
-    }
-  </style>
 </head>
-
-<body class="min-h-screen text-white">
-  <div class="max-w-6xl mx-auto px-4 py-6 sm:py-10">
-
-    <!-- Header -->
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-      <div class="flex items-center gap-3">
-        <div class="w-11 h-11 rounded-2xl glass flex items-center justify-center soft">
-          <span class="text-xl">🎧</span>
-        </div>
+<body>
+  <div class="app">
+    <aside class="panel">
+      <div class="brand">
+        <div class="logo"></div>
         <div>
-          <div class="text-xl sm:text-2xl font-bold tracking-tight">MatchTalk</div>
-          <div class="text-sm text-white/60">
-            Level + Gender match • Text + Voice (WebRTC)
-          </div>
+          <div class="title">Sayra FULL</div>
+          <div class="subtitle">1v1 Match • Text • Voice</div>
         </div>
       </div>
 
-      <div class="flex items-center gap-3">
-        <div class="chip rounded-full px-3 py-1 text-sm text-white/70 flex items-center gap-2">
-          <span class="pulseDot"></span>
-          Online: <span id="onlineCount" class="text-white font-semibold">0</span>
-        </div>
-        <div class="chip rounded-full px-3 py-1 text-sm text-white/60">
-          Tip: 2 ta oyna (Chrome + Incognito)
-        </div>
+      <div class="stats">
+        <div class="pill">👥 Online: <b id="online">0</b></div>
+        <div class="pill">⏳ Waiting: <b id="waitingCount">0</b></div>
+        <div class="pill">🏠 Rooms: <b id="roomsCount">0</b></div>
       </div>
-    </div>
 
-    <!-- Main grid -->
-    <div class="grid lg:grid-cols-2 gap-5 sm:gap-6">
+      <label class="lbl">Ism</label>
+      <input id="name" class="in" placeholder="Masalan: Sharof" maxlength="24">
 
-      <!-- LEFT: Setup + Voice -->
-      <section class="glass rounded-3xl p-5 sm:p-6 soft">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <h2 class="text-lg font-semibold">Boshlash</h2>
-            <p class="text-sm text-white/60">Ism, gender, level tanlang — keyin match bo‘ladi.</p>
-          </div>
-          <div id="statusBadge" class="chip rounded-full px-3 py-1 text-xs text-white/70">
-            Status: <span id="statusText" class="text-white">Tayyor</span>
-          </div>
+      <label class="lbl">Gender</label>
+      <select id="gender" class="in">
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+      </select>
+
+      <label class="lbl">Daraja</label>
+      <select id="level" class="in">
+        <option>A1</option><option>A2</option><option selected>B1</option>
+        <option>B2</option><option>C1</option><option>C2</option>
+      </select>
+
+      <div class="row">
+        <button id="findBtn" class="btn primary">🔎 Find partner</button>
+        <button id="leaveBtn" class="btn danger" disabled>🚪 Leave</button>
+      </div>
+
+      <div class="row">
+        <button id="voiceOnBtn" class="btn ghost" disabled>🎙 Voice ON</button>
+        <button id="voiceOffBtn" class="btn ghost" disabled>🔇 Voice OFF</button>
+      </div>
+
+      <div class="row">
+        <button id="reportBtn" class="btn ghost" disabled>🚫 Report</button>
+        <a class="btn ghost link" href="/admin.html" target="_blank">🛡 Admin</a>
+      </div>
+
+      <div id="status" class="status">Ulanish kutilyapti…</div>
+
+      <div class="hint">
+        Voice uchun mikrofon ruxsatini bering. Localhostda ishlaydi.
+      </div>
+    </aside>
+
+    <main class="chat">
+      <header class="chatHead">
+        <div>
+          <div class="chatTitle">Chat</div>
+          <div id="who" class="who">Partner topilmagan.</div>
+          <div id="typingLine" class="typing"></div>
         </div>
+      </header>
 
-        <div class="mt-5 space-y-4">
-          <div>
-            <label class="text-sm text-white/70">Ism</label>
-            <input id="name" class="input w-full rounded-xl px-3 py-2 mt-1"
-                   placeholder="Masalan: Sharof" />
-          </div>
+      <section id="chatBody" class="chatBody"></section>
 
-          <div class="grid sm:grid-cols-2 gap-3">
-            <div>
-              <label class="text-sm text-white/70">Gender</label>
-              <select id="gender" class="input w-full rounded-xl px-3 py-2 mt-1">
-                <option value="any">Farqi yo‘q</option>
-                <option value="male">Erkak</option>
-                <option value="female">Ayol</option>
-              </select>
-            </div>
-            <div>
-              <label class="text-sm text-white/70">Level</label>
-              <select id="level" class="input w-full rounded-xl px-3 py-2 mt-1">
-                <option>A1</option><option>A2</option><option>B1</option>
-                <option>B2</option><option>C1</option><option>C2</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="grid sm:grid-cols-3 gap-3">
-            <button id="btnStart" class="btn btnPrimary rounded-xl px-4 py-2 font-semibold">
-              Start / Search
-            </button>
-            <button id="btnNext" class="btn btnGhost rounded-xl px-4 py-2 font-semibold hidden">
-              Next
-            </button>
-            <button id="btnLeave" class="btn btnDanger rounded-xl px-4 py-2 font-semibold hidden">
-              Leave
-            </button>
-          </div>
-
-          <div class="chip rounded-2xl p-4">
-            <div class="text-sm text-white/70">Ulandi:</div>
-            <div id="pairInfo" class="text-white font-semibold mt-1">—</div>
-          </div>
-        </div>
-
-        <!-- Voice card -->
-        <div class="mt-5 glass rounded-2xl p-5">
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <div class="font-semibold">🎤 Voice</div>
-              <div class="text-xs text-white/60">
-                Match bo‘lgach: <b>Enable Mic</b> bosing. Quloqchin tavsiya.
-              </div>
-            </div>
-            <div class="chip rounded-full px-3 py-1 text-xs text-white/70">
-              <span id="voiceState">Voice: off</span>
-            </div>
-          </div>
-
-          <div class="grid sm:grid-cols-2 gap-3 mt-4">
-            <button id="btnVoiceOn" class="btn btnGhost rounded-xl px-4 py-2 font-semibold disabled:opacity-50"
-                    disabled>
-              Enable Mic
-            </button>
-            <button id="btnMute" class="btn btnGhost rounded-xl px-4 py-2 font-semibold disabled:opacity-50"
-                    disabled>
-              Mute
-            </button>
-          </div>
-
-          <audio id="remoteAudio" autoplay playsinline></audio>
-
-          <div class="mt-3 text-xs text-white/55">
-            Eslatma: Render/productionda HTTPS bo‘ladi — voice normal ishlaydi.
-          </div>
-        </div>
-      </section>
-
-      <!-- RIGHT: Chat -->
-      <section class="glass rounded-3xl p-5 sm:p-6 soft">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">Chat</h2>
-          <div class="chip rounded-full px-3 py-1 text-xs text-white/60">Enter = Send</div>
-        </div>
-
-        <div id="messages"
-             class="scroll h-[52vh] lg:h-[460px] overflow-y-auto rounded-2xl p-4 bg-black/20 border border-white/10 space-y-2">
-          <div class="text-white/50 text-sm">Match bo‘lgach xabarlar shu yerda chiqadi.</div>
-        </div>
-
-        <div class="mt-3 grid sm:grid-cols-[1fr_auto] gap-2">
-          <input id="msg" class="input w-full rounded-xl px-3 py-2"
-                 placeholder="Xabar yozing..." disabled />
-          <button id="btnSend" class="btn btnPrimary rounded-xl px-5 py-2 font-semibold disabled:opacity-50"
-                  disabled>
-            Send
-          </button>
-        </div>
-      </section>
-
-    </div>
+      <footer class="chatBar">
+        <input id="msg" class="msgIn" placeholder="Xabar yozing…" maxlength="800" disabled>
+        <button id="sendBtn" class="btn primary" disabled>Send</button>
+      </footer>
+    </main>
   </div>
 
-<script>
-/* ==========================================================
-   MatchTalk Frontend Logic
-   ✅ Matching + Text
-   ✅ Voice WebRTC (Perfect Negotiation glare fix)
-   ✅ Responsive UI
-   ========================================================== */
-
-  const socket = io();
-
-  const $ = (id) => document.getElementById(id);
-
-  const nameEl = $("name");
-  const genderEl = $("gender");
-  const levelEl = $("level");
-
-  const btnStart = $("btnStart");
-  const btnNext  = $("btnNext");
-  const btnLeave = $("btnLeave");
-
-  const onlineCount = $("onlineCount");
-  const statusText  = $("statusText");
-  const pairInfo    = $("pairInfo");
-
-  const messages = $("messages");
-  const msg = $("msg");
-  const btnSend = $("btnSend");
-
-  // voice UI
-  const btnVoiceOn = $("btnVoiceOn");
-  const btnMute = $("btnMute");
-  const voiceStateEl = $("voiceState");
-  const remoteAudio = $("remoteAudio");
-
-  // state
-  let me = null;
-  let roomId = null;
-  let partner = null;
-
-  function setStatus(text){
-    statusText.textContent = text;
-  }
-
-  function escapeHtml(str){
-    return String(str).replace(/[&<>"']/g, (m) => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
-    }[m]));
-  }
-
-  function clearMessages(){
-    messages.innerHTML = "";
-  }
-
-  function addMsg(who, text, mine=false){
-    const wrap = document.createElement("div");
-    wrap.className = "flex " + (mine ? "justify-end" : "justify-start");
-
-    const bubble = document.createElement("div");
-    bubble.className =
-      "max-w-[88%] sm:max-w-[78%] rounded-2xl px-3 py-2 text-sm " +
-      (mine ? "bubbleMe" : "bubbleOther");
-
-    bubble.innerHTML =
-      `<div class="text-[11px] text-white/60 mb-1">${escapeHtml(who)}</div>
-       <div>${escapeHtml(text)}</div>`;
-
-    wrap.appendChild(bubble);
-    messages.appendChild(wrap);
-    messages.scrollTop = messages.scrollHeight;
-  }
-
-  function enableChat(on){
-    msg.disabled = !on;
-    btnSend.disabled = !on;
-
-    btnLeave.classList.toggle("hidden", !on);
-    btnNext.classList.toggle("hidden", !on);
-
-    btnVoiceOn.disabled = !on;
-    btnMute.disabled = !on || !VOICE.micOn;
-
-    if (!on){
-      pairInfo.textContent = "—";
-    }
-  }
-
-  // ==========================================================
-  // VOICE (WebRTC) — Perfect Negotiation (no m-line mismatch)
-  // ==========================================================
-  const VOICE = {
-    pc: null,
-    localStream: null,
-    micOn: false,
-    muted: false,
-
-    makingOffer: false,
-    ignoreOffer: false,
-    polite: false, // one side polite, other impolite (deterministic)
-  };
-
-  const RTC_CONFIG = {
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-  };
-
-  function setVoiceStateLabel(){
-    if (!roomId) { voiceStateEl.textContent = "Voice: off"; return; }
-    if (!VOICE.micOn) { voiceStateEl.textContent = "Voice: ready (mic off)"; return; }
-    voiceStateEl.textContent = VOICE.muted ? "Voice: muted" : "Voice: live";
-  }
-
-  async function voiceCreatePC(){
-    if (VOICE.pc) return;
-
-    const pc = new RTCPeerConnection(RTC_CONFIG);
-    VOICE.pc = pc;
-
-    pc.onicecandidate = (e) => {
-      if (e.candidate) socket.emit("signal", { kind: "ice", candidate: e.candidate });
-    };
-
-    pc.ontrack = (e) => {
-      remoteAudio.srcObject = e.streams[0];
-    };
-
-    pc.onnegotiationneeded = async () => {
-      try {
-        VOICE.makingOffer = true;
-
-        // Important: only negotiate when stable
-        if (pc.signalingState !== "stable") return;
-
-        await pc.setLocalDescription(await pc.createOffer());
-        socket.emit("signal", { kind: "desc", desc: pc.localDescription });
-
-      } catch (err) {
-        console.error("negotiationneeded:", err);
-        setStatus("Voice xato: " + (err?.message || err));
-      } finally {
-        VOICE.makingOffer = false;
-      }
-    };
-  }
-
-  async function voiceEnableMic(){
-    if (!roomId) return setStatus("Avval match bo‘lsin.");
-
-    try {
-      await voiceCreatePC();
-
-      if (!VOICE.localStream) {
-        VOICE.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      }
-
-      // add audio tracks once
-      const pc = VOICE.pc;
-      const existingTracks = new Set(pc.getSenders().map(s => s.track).filter(Boolean));
-
-      for (const t of VOICE.localStream.getAudioTracks()){
-        if (!existingTracks.has(t)) pc.addTrack(t, VOICE.localStream);
-        t.enabled = true;
-      }
-
-      VOICE.micOn = true;
-      VOICE.muted = false;
-      btnMute.disabled = false;
-      btnMute.textContent = "Mute";
-      setVoiceStateLabel();
-
-      socket.emit("voiceState", { state: "mic_on" });
-
-    } catch (err) {
-      console.error("enableMic:", err);
-      setStatus("Mic ruxsat berilmadi yoki xato: " + (err?.message || err));
-      VOICE.micOn = false;
-      setVoiceStateLabel();
-    }
-  }
-
-  function voiceToggleMute(){
-    if (!VOICE.localStream) return;
-
-    VOICE.muted = !VOICE.muted;
-    for (const t of VOICE.localStream.getAudioTracks()){
-      t.enabled = !VOICE.muted;
-    }
-
-    btnMute.textContent = VOICE.muted ? "Unmute" : "Mute";
-    setVoiceStateLabel();
-
-    socket.emit("voiceState", { state: VOICE.muted ? "muted" : "unmuted" });
-  }
-
-  async function voiceDestroy(){
-    try {
-      if (VOICE.pc) VOICE.pc.close();
-    } catch {}
-
-    VOICE.pc = null;
-
-    if (VOICE.localStream) {
-      VOICE.localStream.getTracks().forEach(t => t.stop());
-    }
-    VOICE.localStream = null;
-
-    VOICE.micOn = false;
-    VOICE.muted = false;
-
-    VOICE.makingOffer = false;
-    VOICE.ignoreOffer = false;
-
-    remoteAudio.srcObject = null;
-
-    btnMute.disabled = true;
-    btnMute.textContent = "Mute";
-
-    setVoiceStateLabel();
-  }
-
-  socket.on("signal", async (data) => {
-    // data.kind: "ice" | "desc"
-    if (!roomId) return;
-
-    await voiceCreatePC();
-    const pc = VOICE.pc;
-
-    try {
-      if (data.kind === "ice" && data.candidate) {
-        await pc.addIceCandidate(data.candidate);
-        return;
-      }
-
-      if (data.kind === "desc" && data.desc) {
-        const desc = data.desc;
-
-        const offerCollision =
-          desc.type === "offer" &&
-          (VOICE.makingOffer || pc.signalingState !== "stable");
-
-        VOICE.ignoreOffer = !VOICE.polite && offerCollision;
-        if (VOICE.ignoreOffer) return;
-
-        await pc.setRemoteDescription(desc);
-
-        if (desc.type === "offer") {
-          await pc.setLocalDescription(await pc.createAnswer());
-          socket.emit("signal", { kind: "desc", desc: pc.localDescription });
-        }
-      }
-    } catch (err) {
-      console.error("signal handler:", err);
-      setStatus("Voice xato: " + (err?.message || err));
-    }
-  });
-
-  // ==========================================================
-  // TEXT CHAT
-  // ==========================================================
-  function sendText(){
-    const text = msg.value.trim();
-    if (!text || !roomId) return;
-
-    socket.emit("chat", { text });
-    msg.value = "";
-  }
-
-  btnSend.addEventListener("click", sendText);
-  msg.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") sendText();
-  });
-
-  btnVoiceOn.addEventListener("click", voiceEnableMic);
-  btnMute.addEventListener("click", voiceToggleMute);
-
-  // ==========================================================
-  // MATCHING UI ACTIONS
-  // ==========================================================
-  btnStart.addEventListener("click", () => {
-    if (!me) {
-      socket.emit("hello", {
-        name: nameEl.value.trim() || "Guest",
-        gender: genderEl.value,
-        level: levelEl.value
-      });
-      return;
-    }
-    socket.emit("joinQueue");
-  });
-
-  btnNext.addEventListener("click", () => socket.emit("next"));
-  btnLeave.addEventListener("click", () => socket.emit("leaveRoom"));
-
-  // ==========================================================
-  // SOCKET EVENTS
-  // ==========================================================
-  socket.on("onlineCount", ({ count }) => {
-    onlineCount.textContent = count;
-  });
-
-  socket.on("helloOk", (data) => {
-    me = data;
-    setStatus("Profil tasdiqlandi. Qidirish boshlandi...");
-    socket.emit("joinQueue");
-  });
-
-  socket.on("waiting", async (d) => {
-    roomId = null;
-    partner = null;
-
-    enableChat(false);
-    await voiceDestroy();
-
-    clearMessages();
-    addMsg("System", d?.msg || "Partner kutilyapti...", false);
-
-    setStatus(d?.msg || "Kutilyapti...");
-  });
-
-  socket.on("matched", async (d) => {
-    roomId = d.roomId;
-
-    // partner
-    partner = (d.a.id === me.id) ? d.b : d.a;
-
-    // deterministic polite/impolite split (glare fix)
-    // one side polite => stable always
-    VOICE.polite = String(me.id) > String(partner.id);
-
-    // reset UI
-    clearMessages();
-    enableChat(true);
-
-    pairInfo.innerHTML =
-      `${escapeHtml(partner.name)} <span class="text-white/60">(${escapeHtml(partner.level)}/${escapeHtml(partner.gender)})</span>`;
-
-    // IMPORTANT: clear old voice session per match
-    await voiceDestroy();
-    setVoiceStateLabel();
-
-    addMsg("System", "Match topildi ✅ Chat boshlandi!", false);
-    setStatus("Match topildi ✅ Enable Mic bilan voice yoqing.");
-  });
-
-  socket.on("chat", (d) => {
-    const mine = d.from === me?.id;
-    addMsg(mine ? "Men" : d.name, d.text, mine);
-  });
-
-  socket.on("voiceState", (d) => {
-    if (!partner) return;
-    if (d.state === "mic_on") addMsg("System", "Partner mikrofonni yoqdi 🎤", false);
-    if (d.state === "muted") addMsg("System", "Partner mute qildi 🔇", false);
-    if (d.state === "unmuted") addMsg("System", "Partner unmute qildi 🔊", false);
-  });
-
-  socket.on("roomEnded", async (d) => {
-    enableChat(false);
-    await voiceDestroy();
-
-    addMsg("System", "Chat tugadi. Qayta qidirish uchun Start/Next bosing.", false);
-    setStatus("Chat tugadi: " + (d?.reason || "ended"));
-  });
-
-  socket.on("infoMsg", (d) => setStatus(d?.msg || "Info"));
-  socket.on("errorMsg", (d) => setStatus("Xato: " + (d?.msg || "unknown")));
-  socket.on("autoJoinQueue", () => socket.emit("joinQueue"));
-
-  // init
-  enableChat(false);
-  setVoiceStateLabel();
-  setStatus("Tayyor. Ism/gender/level tanlab Start bosing.");
-</script>
+  <audio id="remoteAudio" autoplay></audio>
+  <script src="/app.js"></script>
 </body>
 </html>

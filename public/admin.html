@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sayra Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    .adminWrap{width:min(1200px,100%); margin:0 auto; padding:18px}
+    .box{background:var(--card); border:1px solid var(--stroke); border-radius:var(--r); box-shadow:var(--shadow); padding:14px 16px; margin-top:14px}
+    .grid{display:grid; grid-template-columns: 1fr 1fr; gap:12px}
+    @media (max-width:900px){ .grid{grid-template-columns:1fr} }
+    table{width:100%; border-collapse:collapse; font-size:13px}
+    th,td{padding:8px; border-bottom:1px solid rgba(255,255,255,.08); text-align:left}
+    th{color:rgba(255,255,255,.75)}
+    .mini{color:rgba(255,255,255,.70); font-size:12px}
+    .actions{display:flex; gap:8px; flex-wrap:wrap}
+    .tok{width:100%}
+  </style>
+</head>
+<body>
+  <div class="adminWrap">
+    <div class="box">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <div class="title">Admin Panel</div>
+          <div class="subtitle">Token bilan kiriladi (ADMIN_TOKEN)</div>
+        </div>
+      </div>
+
+      <label class="lbl">Admin Token</label>
+      <input id="token" class="in tok" placeholder="ADMIN_TOKEN kiriting">
+
+      <div class="row">
+        <button id="loginBtn" class="btn primary">🔑 Login</button>
+        <a class="btn ghost link" href="/index.html">⬅ Back</a>
+      </div>
+
+      <div id="adminStatus" class="status">Kutilmoqda…</div>
+    </div>
+
+    <div class="grid">
+      <div class="box">
+        <div class="title">Live Stats</div>
+        <div class="mini" id="statsLine">—</div>
+        <pre id="statsJson" class="status" style="white-space:pre-wrap">—</pre>
+      </div>
+
+      <div class="box">
+        <div class="title">Sockets</div>
+        <div class="mini">Target socket tanlab action bering</div>
+        <div class="actions" style="margin:10px 0">
+          <input id="targetSocketId" class="in" placeholder="socketId">
+          <input id="minutes" class="in" type="number" value="5" min="1" style="max-width:120px">
+          <button id="kickBtn" class="btn danger">Kick</button>
+          <button id="muteBtn" class="btn ghost">Mute</button>
+          <button id="banBtn" class="btn ghost">Ban Client</button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>socketId</th>
+              <th>name</th>
+              <th>level</th>
+              <th>gender</th>
+              <th>room</th>
+              <th>reports</th>
+            </tr>
+          </thead>
+          <tbody id="sockTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>
