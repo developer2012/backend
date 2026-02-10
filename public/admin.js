@@ -1,86 +1,142 @@
-// public/admin.js
+"use strict";
+
+const $ = (id) => document.getElementById(id);
 const socket = io();
 
-const el = (id) => document.getElementById(id);
-const tokenIn = el("token");
-const loginBtn = el("loginBtn");
-const adminStatus = el("adminStatus");
-
-const statsLine = el("statsLine");
-const statsJson = el("statsJson");
-
-const sockTable = el("sockTable");
-const targetSocketId = el("targetSocketId");
-const minutesIn = el("minutes");
-
-const kickBtn = el("kickBtn");
-const muteBtn = el("muteBtn");
-const banBtn = el("banBtn");
-
 let token = "";
+let authed = false;
+let pickedSocketId = "";
 
-function setAdminStatus(t, type="info"){
-  adminStatus.textContent = t;
-  adminStatus.style.color =
-    type === "error" ? "rgba(239,68,68,.95)" :
-    type === "ok" ? "rgba(34,197,94,.95)" :
-    "rgba(255,255,255,.70)";
+function setStatus(text, type="info"){
+  const box = $("status");
+  box.textContent = text;
+  box.style.color =
+    type==="error" ? "rgba(239,68,68,.95)" :
+    type==="ok" ? "rgba(34,197,94,.95)" :
+    "rgba(255,255,255,.75)";
 }
 
-loginBtn.addEventListener("click", () => {
-  token = tokenIn.value.trim();
-  if (!token) return setAdminStatus("Token kiriting.", "error");
+function setAuth(on){
+  authed = !!on;
+  $("refreshBtn").disabled = !authed;
+  $("kickBtn").disabled = !authed || !pickedSocketId;
+  $("muteBtn").disabled = !authed || !pickedSocketId;
+  $("banBtn").disabled  = !authed || !pickedSocketId;
+
+  const b = $("authBadge");
+  b.innerHTML = on ? 'Auth: <b>YES</b>' : 'Auth: <b>NO</b>';
+  b.className = "badge " + (on ? "pillOk" : "pillBad");
+}
+
+function setPicked(id){
+  pickedSocketId = id || "";
+  $("picked").textContent = pickedSocketId || "—";
+  $("kickBtn").disabled = !authed || !pickedSocketId;
+  $("muteBtn").disabled = !authed || !pickedSocketId;
+  $("banBtn").disabled  = !authed || !pickedSocketId;
+}
+
+$("loginBtn").addEventListener("click", ()=>{
+  token = $("token").value.trim();
+  if(!token) return setStatus("Token kiriting.", "error");
   socket.emit("admin_auth", { token });
-  setAdminStatus("Auth yuborildi…", "info");
+  setStatus("Auth tekshirilmoqda…", "info");
 });
 
-socket.on("admin_auth_result", (r) => {
-  if (r.ok) setAdminStatus("✅ Admin ulandi!", "ok");
-  else setAdminStatus("❌ Token noto‘g‘ri", "error");
+$("refreshBtn").addEventListener("click", ()=>{
+  if(!authed) return;
+  socket.emit("admin_auth", { token }); // quick refresh snapshot
+  setStatus("Refresh…", "info");
 });
 
-socket.on("admin_snapshot", (snap) => {
-  statsLine.textContent = `Online: ${snap.onlineUsers} | Rooms: ${snap.rooms} | TS: ${new Date(snap.ts).toLocaleTimeString()}`;
-  statsJson.textContent = JSON.stringify({
-    onlineUsers: snap.onlineUsers,
-    rooms: snap.rooms,
-    queue: snap.queue,
-    bannedClients: snap.bannedClients,
-    bannedIps: snap.bannedIps
-  }, null, 2);
-
-  renderSockets(snap.sockets || []);
+$("kickBtn").addEventListener("click", ()=>{
+  if(!authed || !pickedSocketId) return;
+  socket.emit("admin_action", { token, action:"kick", targetSocketId:pickedSocketId });
+  setStatus("Kick yuborildi.", "ok");
 });
 
-function renderSockets(list){
-  sockTable.innerHTML = "";
-  for (const s of list) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><button class="btn ghost" style="padding:6px 10px" data-sid="${s.socketId}">Pick</button> ${s.socketId.slice(0,10)}…</td>
-      <td>${s.name || "-"}</td>
-      <td>${s.level || "-"}</td>
-      <td>${s.gender || "-"}</td>
-      <td>${s.roomId ? s.roomId.slice(0,10)+"…" : "-"}</td>
-      <td>${s.reports || 0}</td>
-    `;
-    tr.querySelector("button").addEventListener("click", (e) => {
-      targetSocketId.value = e.target.dataset.sid;
-    });
-    sockTable.appendChild(tr);
+$("muteBtn").addEventListener("click", ()=>{
+  if(!authed || !pickedSocketId) return;
+  const minutes = Number($("minutes").value || 5);
+  socket.emit("admin_action", { token, action:"mute", targetSocketId:pickedSocketId, minutes });
+  setStatus("Mute yuborildi.", "ok");
+});
+
+$("banBtn").addEventListener("click", ()=>{
+  if(!authed || !pickedSocketId) return;
+  const minutes = Number($("minutes").value || 5);
+  socket.emit("admin_action", { token, action:"ban_client", targetSocketId:pickedSocketId, minutes });
+  setStatus("Ban yuborildi.", "ok");
+});
+
+socket.on("admin_auth_result", (r)=>{
+  if(r?.ok){
+    setAuth(true);
+    setStatus("✅ Admin kirdingiz.", "ok");
+  } else {
+    setAuth(false);
+    setStatus("❌ Token noto‘g‘ri.", "error");
   }
+});
+
+function td(text, cls=""){
+  const x = document.createElement("td");
+  x.textContent = text ?? "";
+  if(cls) x.className = cls;
+  return x;
 }
 
-function doAction(action){
-  if (!token) return setAdminStatus("Avval login qiling.", "error");
-  const sid = targetSocketId.value.trim();
-  const minutes = Number(minutesIn.value || 5);
-  if (!sid) return setAdminStatus("target socketId kiriting.", "error");
+function buildSocketsTable(sockets){
+  const body = $("sockBody");
+  body.innerHTML = "";
+  (sockets || []).forEach(s=>{
+    const tr = document.createElement("tr");
 
-  socket.emit("admin_action", { token, action, targetSocketId: sid, minutes });
-  setAdminStatus(`Action yuborildi: ${action}`, "info");
+    const pick = document.createElement("td");
+    const btn = document.createElement("button");
+    btn.textContent = "Pick";
+    btn.className = "btn ghost";
+    btn.style.padding = "8px 12px";
+    btn.style.borderRadius = "999px";
+    btn.addEventListener("click", ()=> setPicked(s.socketId));
+    pick.appendChild(btn);
+
+    tr.appendChild(pick);
+    tr.appendChild(td(s.name || "—"));
+    tr.appendChild(td(`${s.level || "—"} / ${s.gender || "—"}`));
+    tr.appendChild(td(s.roomId || "—", "mono"));
+    tr.appendChild(td(String(s.reports || 0)));
+    tr.appendChild(td(s.mutedUntil && Date.now() < s.mutedUntil ? "YES" : "NO"));
+    tr.appendChild(td(s.socketId || "", "mono"));
+    tr.appendChild(td(s.clientId || "", "mono"));
+
+    body.appendChild(tr);
+  });
 }
 
-kickBtn.addEventListener("click", () => doAction("kick"));
-muteBtn.addEventListener("click", () => doAction("mute"));
-banBtn.addEventListener("click", () => doAction("ban_client"));
+function buildRoomsTable(rooms){
+  const body = $("roomBody");
+  body.innerHTML = "";
+  (rooms || []).forEach(r=>{
+    const tr = document.createElement("tr");
+    tr.appendChild(td(r.roomId || "", "mono"));
+    tr.appendChild(td(r.key || "—"));
+    tr.appendChild(td(String(r.size || 0)));
+    tr.appendChild(td((r.ice || []).join(" | ").slice(0, 80) || "—"));
+    tr.appendChild(td(String(r.iceIndex ?? "—")));
+    tr.appendChild(td(String(r.historyLen || 0)));
+    body.appendChild(tr);
+  });
+}
+
+socket.on("admin_snapshot", (snap)=>{
+  if(!snap) return;
+
+  $("kOnline").textContent = snap.onlineUsers ?? 0;
+  $("kRooms").textContent  = snap.rooms ?? 0;
+  $("kMatches").textContent = snap.metrics?.matches ?? 0;
+  $("kMsgs").textContent    = snap.metrics?.messages ?? 0;
+
+  buildSocketsTable(snap.sockets || []);
+  buildRoomsTable(snap.roomDump || []);
+});

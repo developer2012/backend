@@ -1,79 +1,219 @@
 <!doctype html>
 <html lang="uz">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Sayra Admin</title>
-  <link rel="stylesheet" href="/styles.css">
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Sayra Admin Panel</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    .adminWrap{width:min(1200px,100%); margin:0 auto; padding:18px}
-    .box{background:var(--card); border:1px solid var(--stroke); border-radius:var(--r); box-shadow:var(--shadow); padding:14px 16px; margin-top:14px}
-    .grid{display:grid; grid-template-columns: 1fr 1fr; gap:12px}
-    @media (max-width:900px){ .grid{grid-template-columns:1fr} }
-    table{width:100%; border-collapse:collapse; font-size:13px}
-    th,td{padding:8px; border-bottom:1px solid rgba(255,255,255,.08); text-align:left}
-    th{color:rgba(255,255,255,.75)}
-    .mini{color:rgba(255,255,255,.70); font-size:12px}
-    .actions{display:flex; gap:8px; flex-wrap:wrap}
-    .tok{width:100%}
+    :root{
+      --bg0:#050816; --bg1:#0b1030;
+      --card:rgba(255,255,255,.07);
+      --stroke:rgba(255,255,255,.12);
+      --txt:rgba(255,255,255,.92);
+      --muted:rgba(255,255,255,.68);
+      --a:#7c3aed; --b:#06b6d4;
+      --bad:#ef4444; --ok:#22c55e; --warn:#f59e0b;
+      --shadow:0 18px 50px rgba(0,0,0,.45);
+      --r:22px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; color:var(--txt);
+      font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background:
+        radial-gradient(1200px 600px at 10% 0%, rgba(124,58,237,.32), transparent 55%),
+        radial-gradient(900px 500px at 90% 10%, rgba(6,182,212,.20), transparent 60%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      padding:18px;
+    }
+    .wrap{
+      width:min(1250px,100%);
+      margin:0 auto;
+      display:grid;
+      grid-template-columns: 360px 1fr;
+      gap:14px;
+    }
+    @media (max-width:980px){ .wrap{grid-template-columns:1fr} }
+    .card{
+      background:var(--card);
+      border:1px solid var(--stroke);
+      border-radius:var(--r);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .panel{padding:14px 16px}
+    .title{font-weight:950; letter-spacing:-.3px; font-size:18px}
+    .sub{margin-top:6px; font-size:12px; color:var(--muted)}
+    .lbl{display:block; font-size:12px; color:var(--muted); margin:10px 0 6px}
+    .in{
+      width:100%; padding:12px 12px; border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      color:var(--txt); outline:none;
+      font-family: var(--mono);
+    }
+    .btn{
+      cursor:pointer;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.06);
+      color:var(--txt);
+      padding:12px 14px;
+      border-radius:999px;
+      font-weight:900;
+      display:inline-flex; align-items:center; gap:10px;
+      transition:.15s ease;
+      user-select:none;
+      text-decoration:none;
+    }
+    .btn:hover{transform: translateY(-1px); border-color: rgba(255,255,255,.20);}
+    .btn.primary{background: linear-gradient(135deg, rgba(124,58,237,.95), rgba(6,182,212,.85)); border-color: rgba(124,58,237,.4);}
+    .btn.danger{background: linear-gradient(135deg, rgba(239,68,68,.95), rgba(245,158,11,.85)); border-color: rgba(239,68,68,.35);}
+    .btn.ghost{background: rgba(255,255,255,.04);}
+    .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
+    .status{
+      margin-top:12px; padding:10px 12px;
+      border-radius:14px;
+      border:1px dashed rgba(255,255,255,.18);
+      background: rgba(0,0,0,.22);
+      color:rgba(255,255,255,.75);
+      font-size:13px;
+      line-height:1.45;
+      white-space:pre-line;
+      min-height:44px;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+      padding:14px;
+    }
+    @media (max-width:980px){ .grid{grid-template-columns:1fr} }
+    .kpi{
+      padding:12px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.18);
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .kpi b{font-size:20px}
+    table{
+      width:100%;
+      border-collapse: collapse;
+      font-size:13px;
+    }
+    th,td{
+      padding:10px 10px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      vertical-align:top;
+    }
+    th{color:rgba(255,255,255,.75); text-align:left}
+    .mono{font-family:var(--mono); font-size:12px; color:rgba(255,255,255,.82)}
+    .small{font-size:12px; color:rgba(255,255,255,.65)}
+    .badge{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:6px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.18);
+      font-size:12px;
+    }
+    .pillOk{border-color: rgba(34,197,94,.35)}
+    .pillBad{border-color: rgba(239,68,68,.35)}
   </style>
 </head>
-<body>
-  <div class="adminWrap">
-    <div class="box">
-      <div class="brand">
-        <div class="logo"></div>
-        <div>
-          <div class="title">Admin Panel</div>
-          <div class="subtitle">Token bilan kiriladi (ADMIN_TOKEN)</div>
-        </div>
-      </div>
 
-      <label class="lbl">Admin Token</label>
-      <input id="token" class="in tok" placeholder="ADMIN_TOKEN kiriting">
+<body>
+  <div class="wrap">
+    <aside class="card panel">
+      <div class="title">🛡 Sayra Admin</div>
+      <div class="sub">Token bilan kiriladi. /admin sahifa.</div>
+
+      <label class="lbl">ADMIN TOKEN</label>
+      <input id="token" class="in" placeholder="ADMIN_TOKEN" autocomplete="off"/>
 
       <div class="row">
-        <button id="loginBtn" class="btn primary">🔑 Login</button>
-        <a class="btn ghost link" href="/index.html">⬅ Back</a>
+        <button id="loginBtn" class="btn primary">Login</button>
+        <a class="btn ghost" href="/">← Back</a>
       </div>
 
-      <div id="adminStatus" class="status">Kutilmoqda…</div>
-    </div>
+      <div id="status" class="status">Login qiling…</div>
 
-    <div class="grid">
-      <div class="box">
-        <div class="title">Live Stats</div>
-        <div class="mini" id="statsLine">—</div>
-        <pre id="statsJson" class="status" style="white-space:pre-wrap">—</pre>
+      <div class="row">
+        <button id="refreshBtn" class="btn ghost" disabled>🔄 Refresh</button>
       </div>
 
-      <div class="box">
-        <div class="title">Sockets</div>
-        <div class="mini">Target socket tanlab action bering</div>
-        <div class="actions" style="margin:10px 0">
-          <input id="targetSocketId" class="in" placeholder="socketId">
-          <input id="minutes" class="in" type="number" value="5" min="1" style="max-width:120px">
-          <button id="kickBtn" class="btn danger">Kick</button>
-          <button id="muteBtn" class="btn ghost">Mute</button>
-          <button id="banBtn" class="btn ghost">Ban Client</button>
+      <div class="row">
+        <label class="lbl" style="width:100%">Action Minutes</label>
+        <input id="minutes" class="in" value="5"/>
+      </div>
+
+      <div class="row">
+        <button id="kickBtn" class="btn danger" disabled>Kick</button>
+        <button id="muteBtn" class="btn ghost" disabled>Mute</button>
+        <button id="banBtn" class="btn danger" disabled>Ban client</button>
+      </div>
+
+      <div class="row">
+        <div class="small">Target socketId:</div>
+        <div id="picked" class="mono" style="word-break:break-all">—</div>
+      </div>
+    </aside>
+
+    <main class="card">
+      <div class="grid">
+        <div class="kpi"><div class="small">Online Users</div><b id="kOnline">0</b></div>
+        <div class="kpi"><div class="small">Rooms</div><b id="kRooms">0</b></div>
+        <div class="kpi"><div class="small">Matches</div><b id="kMatches">0</b></div>
+        <div class="kpi"><div class="small">Messages</div><b id="kMsgs">0</b></div>
+      </div>
+
+      <div style="padding:0 14px 14px">
+        <div class="badge" id="authBadge">Auth: <b>NO</b></div>
+      </div>
+
+      <div style="padding:0 14px 14px">
+        <h3 style="margin:10px 0 8px">Sockets</h3>
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Pick</th>
+                <th>Name</th>
+                <th>Level/Gender</th>
+                <th>Room</th>
+                <th>Reports</th>
+                <th>Muted</th>
+                <th>SocketId</th>
+                <th>ClientId</th>
+              </tr>
+            </thead>
+            <tbody id="sockBody"></tbody>
+          </table>
         </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th>socketId</th>
-              <th>name</th>
-              <th>level</th>
-              <th>gender</th>
-              <th>room</th>
-              <th>reports</th>
-            </tr>
-          </thead>
-          <tbody id="sockTable"></tbody>
-        </table>
       </div>
-    </div>
+
+      <div style="padding:0 14px 16px">
+        <h3 style="margin:10px 0 8px">Rooms</h3>
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>RoomId</th>
+                <th>Key</th>
+                <th>Size</th>
+                <th>Ice Q</th>
+                <th>Ice Index</th>
+                <th>History</th>
+              </tr>
+            </thead>
+            <tbody id="roomBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
   </div>
 
   <script src="/admin.js"></script>

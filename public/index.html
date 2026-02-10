@@ -17,7 +17,6 @@
       --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
       --shadow:0 18px 50px rgba(0,0,0,.45);
       --r:22px;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
@@ -38,9 +37,8 @@
       gap:14px;
       min-height:100%;
     }
-    @media (max-width:980px){
-      .app{grid-template-columns:1fr}
-    }
+    @media (max-width:980px){ .app{grid-template-columns:1fr} }
+
     .card{
       background:var(--card);
       border:1px solid var(--stroke);
@@ -112,7 +110,6 @@
       white-space:pre-line;
     }
     .hint{margin-top:10px; font-size:12px; color:var(--muted)}
-    .sep{height:1px; background:rgba(255,255,255,.06); margin:14px 0}
 
     /* Chat */
     .chat{display:flex; flex-direction:column}
@@ -125,8 +122,7 @@
     .who{margin-top:6px; color:var(--muted); font-size:12.5px; white-space:pre-line}
     .typing{margin-top:6px; font-size:12px; color:rgba(255,255,255,.70); min-height:16px}
     .chatBody{
-      flex:1;
-      min-height: 420px;
+      flex:1; min-height:420px;
       padding:12px 16px;
       overflow:auto;
       background: rgba(0,0,0,.10);
@@ -147,9 +143,7 @@
     .chatBar{
       padding:14px 16px;
       border-top:1px solid rgba(255,255,255,.06);
-      display:flex;
-      gap:10px;
-      align-items:center;
+      display:flex; gap:10px; align-items:center;
     }
     .msgIn{
       flex:1;
@@ -161,35 +155,32 @@
       outline:none;
     }
 
-    /* MINI ICEBREAKER BAR (small space) */
+    /* ICEBREAKER BAR (mobile full question) */
     .iceBar{
       margin-top:10px;
       display:none;
       gap:10px;
-      align-items:center;
       padding:10px 12px;
       border-radius:16px;
       border:1px solid rgba(255,255,255,.12);
       background: rgba(0,0,0,.22);
     }
-    .iceLeft{
-      display:flex; gap:8px; align-items:center;
-      min-width: 120px;
+    .iceTop{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
     }
-    .iceTitle{
-      font-weight:900;
-      font-size:12px;
-      color: rgba(255,255,255,.82);
-    }
-    .iceCount{
-      font-size:12px;
-      color: rgba(255,255,255,.60);
-    }
+    .iceLeft{display:flex; gap:8px; align-items:center}
+    .iceTitle{font-weight:900; font-size:12px; color: rgba(255,255,255,.82);}
+    .iceCount{font-size:12px; color: rgba(255,255,255,.60);}
     .iceQ{
-      flex:1;
+      margin-top:8px;
       font-size:13px;
-      color: rgba(255,255,255,.90);
-      line-height:1.25;
+      color: rgba(255,255,255,.92);
+      line-height:1.3;
+      white-space: normal; /* ✅ mobile full question */
+      overflow: visible;
     }
     .iceBtns{display:flex; gap:8px}
     .iceBtn{
@@ -270,12 +261,11 @@
 
       <div class="row">
         <button id="reportBtn" class="btn ghost" disabled>🚫 Report</button>
+        <a class="btn ghost" href="/admin" style="margin-left:auto">🛡 Admin</a>
       </div>
 
       <div id="status" class="status">Ulanish kutilyapti…</div>
-      <div class="hint">
-        Matchdan keyin 3 ta “icebreaker” savol chiqadi. ← → bilan o‘tkazasiz.
-      </div>
+      <div class="hint">Matchdan keyin 3 ta savol chiqadi. ← → bilan o‘tkazasiz.</div>
     </aside>
 
     <main class="card chat">
@@ -285,19 +275,18 @@
           <div id="who" class="who">Partner topilmagan.</div>
           <div id="typingLine" class="typing"></div>
 
-          <!-- ICEBREAKER BAR (small) -->
           <div id="iceBar" class="iceBar">
-            <div class="iceLeft">
-              <div class="iceTitle">Questions</div>
-              <div id="iceCount" class="iceCount">1/3</div>
+            <div class="iceTop">
+              <div class="iceLeft">
+                <div class="iceTitle">Questions</div>
+                <div id="iceCount" class="iceCount">1/3</div>
+              </div>
+              <div class="iceBtns">
+                <button id="icePrev" class="iceBtn">←</button>
+                <button id="iceNext" class="iceBtn">→</button>
+              </div>
             </div>
-
             <div id="iceQ" class="iceQ">—</div>
-
-            <div class="iceBtns">
-              <button id="icePrev" class="iceBtn">←</button>
-              <button id="iceNext" class="iceBtn">→</button>
-            </div>
           </div>
         </div>
       </header>
@@ -314,414 +303,6 @@
   <audio id="remoteAudio" autoplay></audio>
   <div class="toastWrap" id="toastWrap"></div>
 
-  <script>
-    // ---------- helpers ----------
-    const $ = (id) => document.getElementById(id);
-    const fmtTime = (t) => new Date(t || Date.now()).toLocaleTimeString();
-
-    function toast(msg, kind="ok"){
-      const wrap = $("toastWrap");
-      const t = document.createElement("div");
-      t.className = "toast " + (kind || "");
-      t.textContent = msg;
-      wrap.appendChild(t);
-      setTimeout(() => t.remove(), 2600);
-    }
-
-    // clientId
-    const LS_KEY = "sayra_client_id";
-    let clientId = localStorage.getItem(LS_KEY);
-    if(!clientId){
-      clientId = "c_" + Math.random().toString(16).slice(2) + Date.now().toString(16);
-      localStorage.setItem(LS_KEY, clientId);
-    }
-
-    // socket
-    const socket = io();
-
-    // UI
-    const onlineEl = $("online");
-    const waitingCountEl = $("waitingCount");
-    const roomsCountEl = $("roomsCount");
-
-    const nameIn = $("name");
-    const genderSel = $("gender");
-    const levelSel = $("level");
-
-    const findBtn = $("findBtn");
-    const leaveBtn = $("leaveBtn");
-    const voiceOnBtn = $("voiceOnBtn");
-    const voiceOffBtn = $("voiceOffBtn");
-    const reportBtn = $("reportBtn");
-
-    const statusBox = $("status");
-    const whoEl = $("who");
-    const typingLine = $("typingLine");
-    const chatBody = $("chatBody");
-    const msgIn = $("msg");
-    const sendBtn = $("sendBtn");
-
-    // Icebreaker UI
-    const iceBar = $("iceBar");
-    const iceCount = $("iceCount");
-    const iceQ = $("iceQ");
-    const icePrev = $("icePrev");
-    const iceNext = $("iceNext");
-
-    // state
-    let my = { name:"", gender:"male", level:"B1" };
-    let partner = null;
-    let roomId = null;
-
-    // read receipts
-    let lastPartnerReadId = null;
-
-    // typing
-    let typingTimer = null;
-    let typingLocal = false;
-
-    // icebreaker state
-    let ice = { questions: [], index: 0, total: 0 };
-
-    // voice
-    let pc = null;
-    let localStream = null;
-    const remoteAudio = $("remoteAudio");
-    const RTC_CFG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-
-    function setStatus(text, type="info"){
-      statusBox.textContent = text;
-      statusBox.style.color =
-        type === "error" ? "rgba(239,68,68,.95)" :
-        type === "ok" ? "rgba(34,197,94,.95)" :
-        type === "wait" ? "rgba(245,158,11,.95)" :
-        "rgba(255,255,255,.75)";
-    }
-
-    function setChatEnabled(on){
-      msgIn.disabled = !on;
-      sendBtn.disabled = !on;
-      leaveBtn.disabled = !on;
-      reportBtn.disabled = !on;
-      voiceOnBtn.disabled = !on;
-      voiceOffBtn.disabled = !on;
-      findBtn.disabled = on;
-
-      if(!on){
-        iceBar.style.display = "none";
-        ice = { questions: [], index: 0, total: 0 };
-      }
-    }
-
-    function updateWho(){
-      if(!partner){
-        whoEl.textContent = "Partner topilmagan.";
-        return;
-      }
-      whoEl.textContent =
-        `Siz: ${my.name} (${my.level}, ${my.gender})\n` +
-        `Partner: ${partner.name} (${partner.level}, ${partner.gender})`;
-    }
-
-    function clearChat(){
-      chatBody.innerHTML = "";
-      typingLine.textContent = "";
-      lastPartnerReadId = null;
-    }
-
-    function addBubble({from, text, at, id}, kind="user"){
-      const wrap = document.createElement("div");
-      wrap.className = "bubble" + (from === my.name ? " me" : "") + (kind === "sys" ? " sys" : "");
-      wrap.textContent = text;
-
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      meta.textContent = `${from} • ${fmtTime(at)}` + (from === my.name && id && lastPartnerReadId === id ? " • ✅ read" : "");
-      wrap.appendChild(meta);
-
-      wrap.dataset.msgId = id || "";
-      chatBody.appendChild(wrap);
-      chatBody.scrollTop = chatBody.scrollHeight;
-    }
-
-    function markReadLabel(){
-      if(!lastPartnerReadId) return;
-      const bubbles = Array.from(chatBody.querySelectorAll(".bubble.me"));
-      for(const b of bubbles){
-        const id = b.dataset.msgId;
-        if(id && id === lastPartnerReadId){
-          const meta = b.querySelector(".meta");
-          if(meta && !meta.textContent.includes("✅ read")){
-            meta.textContent = meta.textContent + " • ✅ read";
-          }
-        }
-      }
-    }
-
-    function idleState(msg){
-      stopVoice();
-      roomId = null;
-      partner = null;
-      updateWho();
-      setChatEnabled(false);
-      findBtn.disabled = false;
-      setStatus(msg || "Tayyor.", "info");
-    }
-
-    // ICE UI render
-    function renderIce(){
-      if(!ice.questions.length){
-        iceBar.style.display = "none";
-        return;
-      }
-      iceBar.style.display = "flex";
-
-      iceCount.textContent = `${ice.index + 1}/${ice.total}`;
-      iceQ.textContent = ice.questions[ice.index] || "—";
-
-      icePrev.disabled = ice.index <= 0;
-      iceNext.disabled = ice.index >= ice.total - 1;
-    }
-
-    icePrev.addEventListener("click", () => {
-      if(!roomId) return;
-      socket.emit("ice_prev");
-    });
-    iceNext.addEventListener("click", () => {
-      if(!roomId) return;
-      socket.emit("ice_next");
-    });
-
-    // socket lifecycle
-    socket.on("connect", () => {
-      socket.emit("hello", { clientId });
-    });
-
-    socket.on("hello_ok", (d) => { if(d?.clientId) clientId = d.clientId; });
-
-    socket.on("global_stats", (s) => {
-      onlineEl.textContent = s.onlineUsers ?? 0;
-      roomsCountEl.textContent = s.rooms ?? 0;
-      const q = s.queue || {};
-      let total = 0;
-      for(const k in q) total += Number(q[k] || 0);
-      waitingCountEl.textContent = total;
-    });
-
-    socket.on("status", (s) => {
-      if(s.type === "waiting") setStatus(s.message, "wait");
-      else if(s.type === "error") setStatus(s.message, "error");
-      else if(s.type === "matched") setStatus(s.message, "ok");
-      else setStatus(s.message, "info");
-    });
-
-    socket.on("matched", (data) => {
-      roomId = data.roomId;
-      my = data.you;
-      partner = data.partner;
-
-      updateWho();
-      setChatEnabled(true);
-      clearChat();
-
-      addBubble({ from:"SYSTEM", text:"✅ Match topildi. Savollardan gaplashib boshlang!", at:Date.now() }, "sys");
-      toast("Match topildi ✅", "ok");
-
-      socket.emit("get_history");
-    });
-
-    socket.on("history", (h) => {
-      (h?.items || []).forEach(m => addBubble({ from:m.from, text:m.text, at:m.at, id:m.id }, "user"));
-    });
-
-    // NEW: icebreaker from server
-    socket.on("icebreaker", (p) => {
-      ice.questions = p.questions || [];
-      ice.index = Number(p.index || 0);
-      ice.total = Number(p.total || ice.questions.length || 0);
-      renderIce();
-    });
-
-    socket.on("message", (m) => {
-      addBubble({ from:m.from, text:m.text, at:m.at, id:m.id }, "user");
-
-      // auto read receipt for partner messages
-      if(partner && m.from === partner.name && m.id){
-        socket.emit("read_up_to", { msgId: m.id });
-      }
-    });
-
-    socket.on("read_up_to", (r) => {
-      lastPartnerReadId = r.msgId;
-      markReadLabel();
-    });
-
-    socket.on("typing", (t) => {
-      if(!partner) return;
-      if(t.on){
-        typingLine.textContent = `${t.from} typing…`;
-        clearTimeout(typingTimer);
-        typingTimer = setTimeout(() => (typingLine.textContent = ""), 1100);
-      } else typingLine.textContent = "";
-    });
-
-    socket.on("partner_left", () => {
-      addBubble({ from:"SYSTEM", text:"Partner chiqib ketdi. Yangi partner qidiring.", at:Date.now() }, "sys");
-      toast("Partner chiqib ketdi", "warn");
-      idleState("Partner chiqib ketdi. Yana Find partner bosing.");
-    });
-
-    socket.on("room_closed", () => {
-      addBubble({ from:"SYSTEM", text:"Room yopildi.", at:Date.now() }, "sys");
-      idleState("Room yopildi. Yana Find partner bosing.");
-    });
-
-    // actions
-    findBtn.addEventListener("click", () => {
-      const name = nameIn.value.trim();
-      const gender = genderSel.value;
-      const level = levelSel.value;
-
-      if(!name) return setStatus("Ism kiriting.", "error");
-
-      my = { name, gender, level };
-      partner = null;
-      roomId = null;
-
-      updateWho();
-      setChatEnabled(false);
-      clearChat();
-      setStatus("Qidirilyapti…", "wait");
-
-      socket.emit("find_partner", { clientId, name, gender, level });
-    });
-
-    leaveBtn.addEventListener("click", () => {
-      socket.emit("leave_chat");
-      toast("Chiqildi", "warn");
-      idleState("Chiqildi. Yana Find partner bosing.");
-    });
-
-    reportBtn.addEventListener("click", () => {
-      socket.emit("report_partner");
-      toast("Report yuborildi", "warn");
-      setStatus("Report yuborildi.", "info");
-    });
-
-    function send(){
-      const text = msgIn.value.trim();
-      if(!text) return;
-      socket.emit("send_message", { text });
-      msgIn.value = "";
-      if(typingLocal){
-        typingLocal = false;
-        socket.emit("typing", { on:false });
-      }
-    }
-
-    sendBtn.addEventListener("click", send);
-
-    msgIn.addEventListener("keydown", (e) => {
-      if(e.key === "Enter"){
-        e.preventDefault();
-        send();
-        return;
-      }
-      if(!typingLocal){
-        typingLocal = true;
-        socket.emit("typing", { on:true });
-      }
-    });
-
-    msgIn.addEventListener("blur", () => {
-      if(typingLocal){
-        typingLocal = false;
-        socket.emit("typing", { on:false });
-      }
-    });
-
-    // voice
-    async function ensureLocalAudio(){
-      if(localStream) return localStream;
-      localStream = await navigator.mediaDevices.getUserMedia({ audio:true });
-      return localStream;
-    }
-
-    async function startVoice(){
-      if(!roomId || !partner) return setStatus("Avval match bo‘ling.", "error");
-      if(pc) return setStatus("Voice allaqachon yoqilgan.", "info");
-      try{
-        const stream = await ensureLocalAudio();
-        pc = new RTCPeerConnection(RTC_CFG);
-        stream.getTracks().forEach(t => pc.addTrack(t, stream));
-        pc.ontrack = (e) => { remoteAudio.srcObject = e.streams[0]; remoteAudio.play().catch(()=>{}); };
-        pc.onicecandidate = (e) => { if(e.candidate) socket.emit("voice_ice", e.candidate); };
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.emit("voice_offer", offer);
-        toast("Voice ON 🎙", "ok");
-        setStatus("🎙 Voice yoqildi (offer yuborildi)", "ok");
-      } catch {
-        setStatus("Mikrofon ruxsati berilmadi yoki xato.", "error");
-        toast("Mic permission kerak", "bad");
-        stopVoice();
-      }
-    }
-
-    async function handleOffer(payload){
-      try{
-        const offer = payload.offer;
-        if(!pc){
-          const stream = await ensureLocalAudio();
-          pc = new RTCPeerConnection(RTC_CFG);
-          stream.getTracks().forEach(t => pc.addTrack(t, stream));
-          pc.ontrack = (e) => { remoteAudio.srcObject = e.streams[0]; remoteAudio.play().catch(()=>{}); };
-          pc.onicecandidate = (e) => { if(e.candidate) socket.emit("voice_ice", e.candidate); };
-        }
-        await pc.setRemoteDescription(offer);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit("voice_answer", answer);
-        setStatus("🎧 Voice ulanish (answer yuborildi)", "ok");
-      } catch {
-        setStatus("Voice offer qabul qilishda xato.", "error");
-        stopVoice();
-      }
-    }
-
-    async function handleAnswer(payload){
-      try{
-        if(!pc) return;
-        await pc.setRemoteDescription(payload.answer);
-        setStatus("✅ Voice connection ready", "ok");
-      } catch {
-        setStatus("Voice answer qo‘yishda xato.", "error");
-      }
-    }
-
-    async function handleIce(payload){
-      try{
-        if(pc && payload.candidate) await pc.addIceCandidate(payload.candidate);
-      } catch {}
-    }
-
-    function stopVoice(){
-      try{ pc?.close(); } catch {}
-      pc = null;
-      try{ localStream?.getTracks().forEach(t => t.stop()); } catch {}
-      localStream = null;
-    }
-
-    voiceOnBtn.addEventListener("click", startVoice);
-    voiceOffBtn.addEventListener("click", () => { stopVoice(); toast("Voice OFF", "warn"); setStatus("🔇 Voice o‘chirildi.", "info"); });
-
-    socket.on("voice_offer", handleOffer);
-    socket.on("voice_answer", handleAnswer);
-    socket.on("voice_ice", handleIce);
-
-    // init
-    setChatEnabled(false);
-    updateWho();
-  </script>
+  <script src="/app.js"></script>
 </body>
 </html>

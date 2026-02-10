@@ -1,10 +1,19 @@
 /**
- * server.js — SAYRA FULL (2 FILE EDITION) + ICEBREAKER QUESTIONS
- * ============================================================================
- * NEW:
- * ✅ After match: server sends 3 "icebreaker" questions (like "What is your hobby?")
- * ✅ Users can navigate with arrows (prev/next) — synced for both
- * ✅ Questions are small UI on client, no big space
+ * server.js — SAYRA FULL (Multi-file) — 1v1 Match + Text + Voice + Icebreaker + Admin page
+ * =====================================================================================
+ * Files:
+ *   - public/index.html  (loads /app.js)
+ *   - public/app.js
+ *   - public/admin.html  (loads /admin.js)
+ *   - public/admin.js
+ *
+ * ✅ 1v1 Matchmaking: level + gender (same key)
+ * ✅ Strict room lock: max 2 users
+ * ✅ Text chat + typing + read receipts (basic)
+ * ✅ Voice: WebRTC signaling (offer/answer/ice)
+ * ✅ Icebreaker: matchdan keyin 3 savol, ← → bilan synced
+ * ✅ Admin: /admin sahifasi + socket admin panel (live snapshot)
+ * ✅ Admin HTTP API: /admin/stats, /admin/action (x-admin-token)
  */
 
 "use strict";
@@ -15,9 +24,9 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 
-// ------------------------------ CONFIG ------------------------------
+// ---------------- CONFIG ----------------
 const PORT = process.env.PORT || 3000;
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "10999999871234534235543534";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "2837198642hdst721eg";
 
 const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
 const GENDERS = ["male", "female"];
@@ -26,21 +35,21 @@ const MAX_ROOM_USERS = 2;
 const MSG_MAX_LEN = 900;
 const NAME_MAX_LEN = 24;
 
+// anti-spam
 const RATE_WINDOW_MS = 5000;
 const RATE_MAX_MSG = 9;
 const JOIN_COOLDOWN_MS = 1200;
 const TYPING_THROTTLE_MS = 250;
 
+// moderation
 const REPORT_TO_MUTE = 3;
 const AUTO_MUTE_MS = 5 * 60 * 1000;
 
-const BAN_DEFAULT_MS = 30 * 60 * 1000;
-
+// history/log
 const HISTORY_LIMIT = 80;
 const LOG_LIMIT = 300;
 
-// ------------------------------ ICEBREAKER QUESTIONS ------------------------------
-// Keep them short; client shows 1 at a time with arrows.
+// ---------------- ICEBREAKER BANK ----------------
 const QUESTION_BANK = [
   "What is your hobby?",
   "What do you do on weekends?",
@@ -61,7 +70,6 @@ const QUESTION_BANK = [
 
 function pick3Questions() {
   const copy = QUESTION_BANK.slice();
-  // fisher-yates shuffle small
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [copy[i], copy[j]] = [copy[j], copy[i]];
@@ -69,22 +77,30 @@ function pick3Questions() {
   return copy.slice(0, 3);
 }
 
-// ------------------------------ APP ------------------------------
+// ---------------- APP ----------------
 const app = express();
 app.use(express.json({ limit: "256kb" }));
-app.use(express.static(path.join(__dirname, "public")));
+
+const PUBLIC_DIR = path.join(__dirname, "public");
+app.use(express.static(PUBLIC_DIR));
+
+app.get("/", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "index.html")));
+app.get("/admin", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "admin.html")));
 
 const server = http.createServer(app);
-const io = new Server(server, { transports: ["websocket", "polling"], cors: { origin: "*" } });
+const io = new Server(server, {
+  transports: ["websocket", "polling"],
+  cors: { origin: "*" },
+});
 
-// ------------------------------ STATE ------------------------------
-const waiting = new Map();
-const rooms = new Map(); // roomId -> {a,b,key,createdAt,lastActiveAt,history,lock, ice:{questions, index}}
-const socketMeta = new Map();
-const clientIndex = new Map();
+// ---------------- STATE ----------------
+const waiting = new Map(); // key -> [{socketId, clientId, name, level, gender, joinedAt}]
+const rooms = new Map();   // roomId -> {a,b,key,createdAt,lastActiveAt,history,lock, ice:{questions,index}}
+const socketMeta = new Map(); // socketId -> meta
+const clientIndex = new Map(); // clientId -> socketId
 
-const bannedClients = new Map();
-const bannedIps = new Map();
+const bannedClients = new Map(); // clientId -> until
+const bannedIps = new Map(); // ip -> until
 
 const metrics = {
   startedAt: Date.now(),
@@ -110,7 +126,7 @@ function addLog(type, data) {
   if (logs.length > LOG_LIMIT) logs.shift();
 }
 
-// ------------------------------ UTILS ------------------------------
+// ---------------- UTILS ----------------
 const now = () => Date.now();
 const uid = (n = 10) => crypto.randomBytes(n).toString("hex");
 
@@ -132,7 +148,7 @@ function ensureQueue(key) {
 
 function removeFromWaitingSocket(socketId) {
   for (const [k, q] of waiting.entries()) {
-    const i = q.findIndex((e) => e.socketId === socketId);
+    const i = q.findIndex(e => e.socketId === socketId);
     if (i !== -1) {
       q.splice(i, 1);
       if (!q.length) waiting.delete(k);
@@ -143,7 +159,7 @@ function removeFromWaitingSocket(socketId) {
 }
 function removeFromWaitingClient(clientId) {
   for (const [k, q] of waiting.entries()) {
-    const i = q.findIndex((e) => e.clientId === clientId);
+    const i = q.findIndex(e => e.clientId === clientId);
     if (i !== -1) {
       q.splice(i, 1);
       if (!q.length) waiting.delete(k);
@@ -156,10 +172,7 @@ function removeFromWaitingClient(clientId) {
 function roomSize(roomId) {
   const r = rooms.get(roomId);
   if (!r) return 0;
-  let c = 0;
-  if (r.a) c++;
-  if (r.b) c++;
-  return c;
+  return (r.a ? 1 : 0) + (r.b ? 1 : 0);
 }
 function otherSocket(roomId, mySocketId) {
   const r = rooms.get(roomId);
@@ -171,9 +184,13 @@ function otherSocket(roomId, mySocketId) {
 
 function queueStats() {
   const out = {};
-  for (const L of LEVELS) for (const G of GENDERS) out[keyOf(L, G)] = (waiting.get(keyOf(L, G)) || []).length;
+  for (const L of LEVELS) for (const G of GENDERS) {
+    const k = keyOf(L, G);
+    out[k] = (waiting.get(k) || []).length;
+  }
   return out;
 }
+
 function emitGlobalStats() {
   io.emit("global_stats", {
     ts: now(),
@@ -186,12 +203,14 @@ function emitGlobalStats() {
       messages: metrics.messages,
       reports: metrics.reports,
       iceShown: metrics.iceShown
-    },
+    }
   });
 }
+
 function status(socket, type, message, extra = {}) {
   socket.emit("status", { ts: now(), type, message, ...extra });
 }
+
 function isBanned(clientId, ip) {
   const t = now();
   const bc = bannedClients.get(clientId);
@@ -204,14 +223,17 @@ function isBanned(clientId, ip) {
 function canSendMessage(socketId) {
   const m = socketMeta.get(socketId);
   if (!m) return { ok: false, reason: "no_meta" };
+
   if (m.mutedUntil && now() < m.mutedUntil) {
     return { ok: false, reason: "muted", seconds: Math.ceil((m.mutedUntil - now()) / 1000) };
   }
+
   const t = now();
   const arr = m.msgTimes || [];
-  const keep = arr.filter((x) => t - x <= RATE_WINDOW_MS);
+  const keep = arr.filter(x => t - x <= RATE_WINDOW_MS);
   keep.push(t);
   m.msgTimes = keep;
+
   if (keep.length > RATE_MAX_MSG) return { ok: false, reason: "rate" };
   return { ok: true };
 }
@@ -232,18 +254,17 @@ function pushHistory(roomId, msg) {
   r.lastActiveAt = now();
 }
 
-// ----------- ICEBREAKER HELPERS -----------
+// -------- ICEBREAKER --------
 function emitIcebreaker(roomId) {
   const r = rooms.get(roomId);
   if (!r?.ice) return;
-  const payload = {
+  io.to(roomId).emit("icebreaker", {
     roomId,
     questions: r.ice.questions,
     index: r.ice.index,
     total: r.ice.questions.length,
     ts: now()
-  };
-  io.to(roomId).emit("icebreaker", payload);
+  });
   metrics.iceShown++;
 }
 
@@ -257,7 +278,7 @@ function iceNav(roomId, dir) {
   emitIcebreaker(roomId);
 }
 
-// ------------------------------ ADMIN HTTP API ------------------------------
+// ---------------- ADMIN HTTP API ----------------
 function requireAdmin(req, res, next) {
   const token = req.headers["x-admin-token"];
   if (!token || token !== ADMIN_TOKEN) return res.status(401).json({ ok: false, error: "unauthorized" });
@@ -265,7 +286,13 @@ function requireAdmin(req, res, next) {
 }
 
 app.get("/health", (req, res) => {
-  res.json({ ok: true, ts: now(), uptimeSec: Math.floor((now() - metrics.startedAt) / 1000), onlineUsers, rooms: rooms.size });
+  res.json({
+    ok: true,
+    ts: now(),
+    uptimeSec: Math.floor((now() - metrics.startedAt) / 1000),
+    onlineUsers,
+    rooms: rooms.size
+  });
 });
 
 app.get("/metrics-lite", (req, res) => {
@@ -274,16 +301,42 @@ app.get("/metrics-lite", (req, res) => {
 
 app.get("/admin/stats", requireAdmin, (req, res) => {
   const sockets = Array.from(socketMeta.entries()).map(([sid, m]) => ({
-    socketId: sid, clientId: m.clientId, name: m.name, level: m.level, gender: m.gender,
-    roomId: m.roomId, reports: m.reports || 0, mutedUntil: m.mutedUntil || 0, ip: m.ip,
+    socketId: sid,
+    clientId: m.clientId,
+    name: m.name,
+    level: m.level,
+    gender: m.gender,
+    roomId: m.roomId,
+    reports: m.reports || 0,
+    mutedUntil: m.mutedUntil || 0,
+    ip: m.ip
   }));
+
   const roomDump = Array.from(rooms.entries()).map(([rid, r]) => ({
-    roomId: rid, key: r.key, a: r.a, b: r.b, createdAt: r.createdAt, lastActiveAt: r.lastActiveAt,
-    historyLen: r.history.length, lock: r.lock, iceIndex: r.ice?.index ?? null, iceQ: r.ice?.questions ?? null
+    roomId: rid,
+    key: r.key,
+    a: r.a,
+    b: r.b,
+    size: roomSize(rid),
+    createdAt: r.createdAt,
+    lastActiveAt: r.lastActiveAt,
+    lock: r.lock,
+    iceIndex: r.ice?.index ?? null,
+    ice: r.ice?.questions ?? null,
+    historyLen: r.history?.length || 0
   }));
+
   res.json({
-    ok: true, ts: now(), onlineUsers, rooms: rooms.size, queue: queueStats(), metrics,
-    sockets, roomDump, bannedClients: Array.from(bannedClients.entries()), bannedIps: Array.from(bannedIps.entries()),
+    ok: true,
+    ts: now(),
+    onlineUsers,
+    rooms: rooms.size,
+    queue: queueStats(),
+    metrics,
+    sockets,
+    roomDump,
+    bannedClients: Array.from(bannedClients.entries()),
+    bannedIps: Array.from(bannedIps.entries()),
     logs
   });
 });
@@ -338,7 +391,7 @@ app.post("/admin/action", requireAdmin, (req, res) => {
   return res.json({ ok: false, error: "unknown_action" });
 });
 
-// ------------------------------ SOCKET EVENTS ------------------------------
+// ---------------- SOCKETS ----------------
 io.on("connection", (socket) => {
   metrics.connections++;
   onlineUsers++;
@@ -346,7 +399,6 @@ io.on("connection", (socket) => {
 
   const ip = socket.handshake.address || "unknown";
   addLog("connect", { socketId: socket.id, ip });
-
   status(socket, "connected", "✅ Ulandingiz.");
 
   socket.on("hello", (payload) => {
@@ -365,19 +417,31 @@ io.on("connection", (socket) => {
     }
     clientIndex.set(clientId, socket.id);
 
-    socketMeta.set(socket.id, socketMeta.get(socket.id) || {
-      clientId, name: null, level: null, gender: null, key: null, roomId: null,
-      msgTimes: [], lastJoinAt: 0, mutedUntil: 0, reports: 0, ip
-    });
-    socketMeta.get(socket.id).clientId = clientId;
-    socketMeta.get(socket.id).ip = ip;
+    if (!socketMeta.has(socket.id)) {
+      socketMeta.set(socket.id, {
+        clientId,
+        name: null,
+        level: null,
+        gender: null,
+        key: null,
+        roomId: null,
+        msgTimes: [],
+        lastJoinAt: 0,
+        mutedUntil: 0,
+        reports: 0,
+        ip
+      });
+    } else {
+      socketMeta.get(socket.id).clientId = clientId;
+      socketMeta.get(socket.id).ip = ip;
+    }
 
     socket.emit("hello_ok", { clientId, ts: now() });
   });
 
   socket.on("find_partner", (payload) => {
-    const m0 = socketMeta.get(socket.id);
-    const clientId = clampText(payload?.clientId, 80) || m0?.clientId || ("c_" + uid(8));
+    const meta0 = socketMeta.get(socket.id);
+    const clientId = clampText(payload?.clientId, 80) || meta0?.clientId || ("c_" + uid(8));
     const ban = isBanned(clientId, ip);
     if (!ban.ok) {
       status(socket, "error", "⛔ Siz vaqtincha BAN bo‘lgansiz.");
@@ -392,8 +456,8 @@ io.on("connection", (socket) => {
     if (!isValidLevel(level)) return status(socket, "error", "Level noto‘g‘ri (A1–C2).");
     if (!isValidGender(gender)) return status(socket, "error", "Gender noto‘g‘ri (male/female).");
 
-    const metaNow = socketMeta.get(socket.id);
-    if (metaNow?.roomId) return status(socket, "error", "Siz allaqachon chatdasiz.");
+    const metaNow = socketMeta.get(socket.id) || {};
+    if (metaNow.roomId) return status(socket, "error", "Siz allaqachon chatdasiz.");
 
     if (metaNow.lastJoinAt && now() - metaNow.lastJoinAt < JOIN_COOLDOWN_MS) {
       return status(socket, "error", "Juda tez bosyapsiz. 1 soniya kuting 🙂");
@@ -426,10 +490,10 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // create room + icebreaker init
     const roomId = createRoomId();
     const iceQuestions = pick3Questions();
-    const room = {
+
+    rooms.set(roomId, {
       a: other.socketId,
       b: socket.id,
       key,
@@ -438,8 +502,7 @@ io.on("connection", (socket) => {
       history: [],
       lock: true,
       ice: { questions: iceQuestions, index: 0 }
-    };
-    rooms.set(roomId, room);
+    });
 
     otherSock.join(roomId);
     socket.join(roomId);
@@ -450,14 +513,23 @@ io.on("connection", (socket) => {
 
     metrics.matches++;
 
-    socket.emit("matched", { ts: now(), roomId, you: { name, level, gender }, partner: { name: other.name, level: other.level, gender: other.gender } });
-    otherSock.emit("matched", { ts: now(), roomId, you: { name: other.name, level: other.level, gender: other.gender }, partner: { name, level, gender } });
+    socket.emit("matched", {
+      ts: now(),
+      roomId,
+      you: { name, level, gender },
+      partner: { name: other.name, level: other.level, gender: other.gender }
+    });
+
+    otherSock.emit("matched", {
+      ts: now(),
+      roomId,
+      you: { name: other.name, level: other.level, gender: other.gender },
+      partner: { name, level, gender }
+    });
 
     io.to(roomId).emit("status", { ts: now(), type: "matched", message: "✅ Match topildi. Chat faqat 2 kishilik." });
 
-    // send icebreaker questions
     emitIcebreaker(roomId);
-
     emitGlobalStats();
   });
 
@@ -468,13 +540,13 @@ io.on("connection", (socket) => {
     socket.emit("history", { ts: now(), roomId: m.roomId, items: r?.history || [] });
   });
 
-  // ICEBREAKER NAV
   socket.on("ice_next", () => {
     const m = socketMeta.get(socket.id);
     if (!m?.roomId) return;
     if (roomSize(m.roomId) !== MAX_ROOM_USERS) return;
     iceNav(m.roomId, "next");
   });
+
   socket.on("ice_prev", () => {
     const m = socketMeta.get(socket.id);
     if (!m?.roomId) return;
@@ -496,7 +568,7 @@ io.on("connection", (socket) => {
     socket.to(m.roomId).emit("typing", { ts: t, from: m.name || "Partner", on: !!payload?.on });
   });
 
-  // send message
+  // message
   socket.on("send_message", (payload) => {
     const m = socketMeta.get(socket.id);
     if (!m?.roomId) return status(socket, "error", "Avval partner toping.");
@@ -518,7 +590,6 @@ io.on("connection", (socket) => {
     io.to(m.roomId).emit("message", msg);
   });
 
-  // read receipt
   socket.on("read_up_to", (payload) => {
     const m = socketMeta.get(socket.id);
     if (!m?.roomId) return;
@@ -528,7 +599,6 @@ io.on("connection", (socket) => {
     socket.to(m.roomId).emit("read_up_to", { ts: now(), reader: m.name || "Partner", msgId });
   });
 
-  // report
   socket.on("report_partner", () => {
     const m = socketMeta.get(socket.id);
     if (!m?.roomId) return;
@@ -549,7 +619,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // leave
   socket.on("leave_chat", () => {
     removeFromWaitingSocket(socket.id);
 
@@ -607,14 +676,43 @@ io.on("connection", (socket) => {
 
   function buildAdminSnapshot() {
     const sockets = Array.from(socketMeta.entries()).map(([sid, m]) => ({
-      socketId: sid, clientId: m.clientId, name: m.name, level: m.level, gender: m.gender,
-      roomId: m.roomId, reports: m.reports || 0, mutedUntil: m.mutedUntil || 0, ip: m.ip
+      socketId: sid,
+      clientId: m.clientId,
+      name: m.name,
+      level: m.level,
+      gender: m.gender,
+      roomId: m.roomId,
+      reports: m.reports || 0,
+      mutedUntil: m.mutedUntil || 0,
+      ip: m.ip
     }));
+
     const roomDump = Array.from(rooms.entries()).map(([rid, r]) => ({
-      roomId: rid, key: r.key, a: r.a, b: r.b, createdAt: r.createdAt, lastActiveAt: r.lastActiveAt,
-      lock: r.lock, size: roomSize(rid), iceIndex: r.ice?.index ?? null, ice: r.ice?.questions ?? null
+      roomId: rid,
+      key: r.key,
+      a: r.a,
+      b: r.b,
+      size: roomSize(rid),
+      createdAt: r.createdAt,
+      lastActiveAt: r.lastActiveAt,
+      lock: r.lock,
+      iceIndex: r.ice?.index ?? null,
+      ice: r.ice?.questions ?? null,
+      historyLen: r.history?.length || 0
     }));
-    return { ts: now(), onlineUsers, rooms: rooms.size, queue: queueStats(), metrics, sockets, roomDump, bannedClients: Array.from(bannedClients.entries()), bannedIps: Array.from(bannedIps.entries()), logs };
+
+    return {
+      ts: now(),
+      onlineUsers,
+      rooms: rooms.size,
+      queue: queueStats(),
+      metrics,
+      sockets,
+      roomDump,
+      bannedClients: Array.from(bannedClients.entries()),
+      bannedIps: Array.from(bannedIps.entries()),
+      logs
+    };
   }
 
   function adminBroadcast() {
@@ -643,7 +741,11 @@ io.on("connection", (socket) => {
       adminBroadcast(); return;
     }
     if (action === "ban_client") {
-      if (tm) { bannedClients.set(tm.clientId, now() + durMs); metrics.bans++; if (targetSock) { status(targetSock, "error", `Siz ${minutes} min BAN bo‘ldingiz.`); targetSock.disconnect(true); } }
+      if (tm) {
+        bannedClients.set(tm.clientId, now() + durMs);
+        metrics.bans++;
+        if (targetSock) { status(targetSock, "error", `Siz ${minutes} min BAN bo‘ldingiz.`); targetSock.disconnect(true); }
+      }
       adminBroadcast(); return;
     }
     if (action === "ban_ip") {
@@ -652,7 +754,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // disconnect
   socket.on("disconnect", () => {
     metrics.disconnections++;
     onlineUsers = Math.max(0, onlineUsers - 1);
@@ -663,6 +764,7 @@ io.on("connection", (socket) => {
     if (m?.roomId) {
       const roomId = m.roomId;
       const otherId = otherSocket(roomId, socket.id);
+
       if (otherId) {
         const otherSock = io.sockets.sockets.get(otherId);
         const om = socketMeta.get(otherId);
@@ -672,6 +774,7 @@ io.on("connection", (socket) => {
         }
         if (om) socketMeta.set(otherId, { ...om, roomId: null });
       }
+
       destroyRoom(roomId, "disconnect");
     }
 
@@ -679,11 +782,11 @@ io.on("connection", (socket) => {
     socketMeta.delete(socket.id);
 
     emitGlobalStats();
-    io.to("ADMIN_ROOM").emit("admin_snapshot", buildAdminSnapshot());
+    adminBroadcast();
   });
 });
 
-// ------------------------------ START ------------------------------
+// ---------------- START ----------------
 server.listen(PORT, () => {
   console.log(`✅ App running: http://localhost:${PORT}`);
   console.log(`🛡 Admin token set? ${ADMIN_TOKEN !== "CHANGE_ME_ADMIN_TOKEN" ? "YES" : "NO (set ADMIN_TOKEN env)"}`);
